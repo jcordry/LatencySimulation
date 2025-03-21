@@ -12,6 +12,8 @@ import com.badlogic.gdx.utils.viewport.FitViewport
 import com.badlogic.gdx.utils.viewport.ScreenViewport
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import ktx.app.KtxGame
@@ -24,8 +26,15 @@ import ktx.graphics.LetterboxingViewport
 import ktx.graphics.use
 import java.util.concurrent.ConcurrentLinkedQueue
 
+
+/* TODO:
+    - implement and simulate the lockstep protocol
+    - implement and simulate the dead reckoning algorithm (and at least the lerping aspect)
+ */
+
 class Main : KtxGame<KtxScreen>() {
     override fun create() {
+
         KtxAsync.initiate()
 
         addScreen(FirstScreen())
@@ -40,6 +49,7 @@ class MyCharacter(private var position: Vector2, private var velocity: Vector2, 
 
     init {
         sprite.setSize(32f, 32f)
+        sprite.setOriginCenter()
     }
 
     fun moveTo(target: Vector2) {
@@ -59,8 +69,8 @@ class MyCharacter(private var position: Vector2, private var velocity: Vector2, 
             } else {
                 position.add(velocity.cpy().scl(deltaTime))
             }
+            sprite.setPosition(position.x, position.y)
         }
-        sprite.setPosition(position.x, position.y)
     }
 
     fun draw(batch: SpriteBatch) {
@@ -74,7 +84,13 @@ class FirstScreen : KtxScreen {
     private lateinit var p1 : MyCharacter
     private lateinit var p2 : MyCharacter
     private lateinit var viewport: FitViewport
+
+    // This is done as a means to simulate the sending/receiving messages
     private val queue: ConcurrentLinkedQueue<Vector2> = ConcurrentLinkedQueue()
+
+    // Define a coroutine scope to let me declare coroutine that are going to run
+    // without blocking the normal game loop
+    private val customScope = CoroutineScope(Dispatchers.IO + Job())
 
     override fun show() {
         super.show()
@@ -82,17 +98,17 @@ class FirstScreen : KtxScreen {
         camera.setToOrtho(true, 1200f, 540f)
         viewport = FitViewport(1200f, 540f, camera)
         p1 = MyCharacter(Vector2(50f, 50f), Vector2(0f, 0f), Sprite(image))
-        p2 = MyCharacter(Vector2(350f, 350f), Vector2(0f, 0f), Sprite(image))
+        p2 = MyCharacter(Vector2(350f, 50f), Vector2(0f, 0f), Sprite(image))
         p2.sprite.color = com.badlogic.gdx.graphics.Color.BLUE
-        // make a coroutine to simulate the network latency
-        Thread {
-            while (true) {
+        // make a coroutine to get the simulated network messages and use it to update player 2
+        customScope.launch {
+            while (true) { // while true is not safe: this does not terminate
                 queue.poll()?.let {
-                    p2.moveTo(it.add(300f, 0f))
+                    // The copy here is IMPORTANT
+                    p2.moveTo(it.cpy().add(300f, 0f))
                 }
-//                Thread.sleep(20)
             }
-        }.start()
+        }
     }
 
     override fun render(delta: Float) {
@@ -105,6 +121,7 @@ class FirstScreen : KtxScreen {
         super.resize(width, height)
         viewport.update(width, height, true)
     }
+
     private fun draw() {
         clearScreen(red = 0.8f, green = 0.7f, blue = 0.7f)
         viewport.apply()
@@ -122,16 +139,15 @@ class FirstScreen : KtxScreen {
 
     private fun input() {
         if (Gdx.input.isTouched) {
-            val target = Vector2(Gdx.input.x.toFloat() - 32, Gdx.input.y.toFloat() - 32)
+            val target = Vector2(Gdx.input.x.toFloat(), Gdx.input.y.toFloat())
             viewport.unproject(target)
             p1.moveTo(target)
             // "enqueue" the target position for the second player; do it in a delayed coroutine to simulate network latency
-            // The scope of the coroutine should be the same as the game loop
-            CoroutineScope(Dispatchers.IO).launch {
-                delay(20)
+            // The scope of the coroutine should not be the same as the game loop
+            customScope.launch {
+                delay(100) // induced latency
                 queue.add(target)
             }
-//            Gdx.app.log("input", "$target.x $target.y")
         }
     }
 
