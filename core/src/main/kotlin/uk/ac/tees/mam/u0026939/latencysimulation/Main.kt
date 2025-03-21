@@ -6,13 +6,10 @@ import com.badlogic.gdx.graphics.Texture
 import com.badlogic.gdx.graphics.Texture.TextureFilter.Linear
 import com.badlogic.gdx.graphics.g2d.Sprite
 import com.badlogic.gdx.graphics.g2d.SpriteBatch
-import com.badlogic.gdx.math.Vector
 import com.badlogic.gdx.math.Vector2
 import com.badlogic.gdx.utils.viewport.FitViewport
-import com.badlogic.gdx.utils.viewport.ScreenViewport
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -22,9 +19,9 @@ import ktx.app.clearScreen
 import ktx.assets.disposeSafely
 import ktx.assets.toInternalFile
 import ktx.async.KtxAsync
-import ktx.graphics.LetterboxingViewport
 import ktx.graphics.use
 import java.util.concurrent.ConcurrentLinkedQueue
+import kotlin.random.Random
 
 
 /* TODO:
@@ -37,15 +34,15 @@ class Main : KtxGame<KtxScreen>() {
 
         KtxAsync.initiate()
 
-        addScreen(FirstScreen())
-        setScreen<FirstScreen>()
+        addScreen(GameScreen())
+        setScreen<GameScreen>()
     }
 }
 
-class MyCharacter(private var position: Vector2, private var velocity: Vector2, val sprite: Sprite) {
-
+class MyCharacter(private var position: Vector2, val sprite: Sprite) {
     private var targetPosition: Vector2? = null
     private var speed = 400f // Units per second, you can adjust it as needed
+    private var velocity: Vector2 = Vector2(0f, 0f)
 
     init {
         sprite.setSize(32f, 32f)
@@ -69,8 +66,8 @@ class MyCharacter(private var position: Vector2, private var velocity: Vector2, 
             } else {
                 position.add(velocity.cpy().scl(deltaTime))
             }
-            sprite.setPosition(position.x, position.y)
         }
+        sprite.setPosition(position.x, position.y)
     }
 
     fun draw(batch: SpriteBatch) {
@@ -78,7 +75,7 @@ class MyCharacter(private var position: Vector2, private var velocity: Vector2, 
     }
 }
 
-class FirstScreen : KtxScreen {
+class GameScreen : KtxScreen {
     private val image = Texture("circle.png".toInternalFile(), true).apply { setFilter(Linear, Linear) }
     private val batch = SpriteBatch()
     private lateinit var p1 : MyCharacter
@@ -97,8 +94,8 @@ class FirstScreen : KtxScreen {
         val camera = OrthographicCamera()
         camera.setToOrtho(true, 1200f, 540f)
         viewport = FitViewport(1200f, 540f, camera)
-        p1 = MyCharacter(Vector2(50f, 50f), Vector2(0f, 0f), Sprite(image))
-        p2 = MyCharacter(Vector2(350f, 50f), Vector2(0f, 0f), Sprite(image))
+        p1 = MyCharacter(Vector2(50f, 50f), Sprite(image))
+        p2 = MyCharacter(Vector2(350f, 50f), Sprite(image))
         p2.sprite.color = com.badlogic.gdx.graphics.Color.BLUE
         // make a coroutine to get the simulated network messages and use it to update player 2
         customScope.launch {
@@ -145,7 +142,7 @@ class FirstScreen : KtxScreen {
             // "enqueue" the target position for the second player; do it in a delayed coroutine to simulate network latency
             // The scope of the coroutine should not be the same as the game loop
             customScope.launch {
-                delay(100) // induced latency
+                delay(30 + Random.nextLong(30)) // induced latency 30 to 60 ms
                 queue.add(target)
             }
         }
