@@ -26,7 +26,6 @@ import kotlin.random.Random
 
 
 /* TODO:
-    - implement and simulate the lockstep protocol
     - implement and simulate the dead reckoning algorithm (and at least the lerping aspect)
  */
 
@@ -79,7 +78,9 @@ class MyCharacter(private var position: Vector2, val sprite: Sprite) {
 class GameScreen : KtxScreen {
     private val image = Texture("circle.png".toInternalFile(), true).apply { setFilter(Linear, Linear) }
     private val batch = SpriteBatch()
+    // Player 1
     private lateinit var p1 : MyCharacter
+    // Player 2: this one we are simulating network latency over
     private lateinit var p2 : MyCharacter
     private lateinit var viewport: FitViewport
 
@@ -101,8 +102,9 @@ class GameScreen : KtxScreen {
         // make a coroutine to get the simulated network messages and use it to update player 2
         customScope.launch {
             while (true) { // while true is not safe: this does not terminate
+                // This is a LinkedBlockingQueue. `take` is blocking.
                 queue.take().let {
-                    // The copy here is IMPORTANT
+                    // The `copy` here is IMPORTANT
                     p2.moveTo(it.cpy().add(300f, 0f))
                 }
             }
