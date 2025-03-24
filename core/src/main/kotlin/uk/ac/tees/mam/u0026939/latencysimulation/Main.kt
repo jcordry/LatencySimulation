@@ -21,6 +21,7 @@ import ktx.assets.toInternalFile
 import ktx.async.KtxAsync
 import ktx.graphics.use
 import java.util.concurrent.ConcurrentLinkedQueue
+import java.util.concurrent.LinkedBlockingQueue
 import kotlin.random.Random
 
 
@@ -83,7 +84,7 @@ class GameScreen : KtxScreen {
     private lateinit var viewport: FitViewport
 
     // This is done as a means to simulate the sending/receiving messages
-    private val queue: ConcurrentLinkedQueue<Vector2> = ConcurrentLinkedQueue()
+    private val queue: LinkedBlockingQueue<Vector2> = LinkedBlockingQueue()
 
     // Define a coroutine scope to let me declare coroutine that are going to run
     // without blocking the normal game loop
@@ -100,7 +101,7 @@ class GameScreen : KtxScreen {
         // make a coroutine to get the simulated network messages and use it to update player 2
         customScope.launch {
             while (true) { // while true is not safe: this does not terminate
-                queue.poll()?.let {
+                queue.take().let {
                     // The copy here is IMPORTANT
                     p2.moveTo(it.cpy().add(300f, 0f))
                 }
