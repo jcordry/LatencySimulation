@@ -43,6 +43,7 @@ class MyCharacter(private var position: Vector2, val sprite: Sprite) {
     private var targetPosition: Vector2? = null
     private var speed = 400f // Units per second, you can adjust it as needed
     private var velocity: Vector2 = Vector2(0f, 0f)
+    var timestamp = 0
 
     init {
         sprite.setSize(32f, 32f)
@@ -75,12 +76,50 @@ class MyCharacter(private var position: Vector2, val sprite: Sprite) {
     }
 }
 
+data class PlayerInput(val playerId: Int, val action: Vector2, val timestamp: Int)
+
+data class LockstepFrame(val tick: Int, val inputs: MutableList<PlayerInput> = mutableListOf())
+
+class LockstepManager(private val players: List<MyCharacter>) {
+    private val inputBuffer = mutableMapOf<Int, LockstepFrame>()
+    private var currentTick = 0
+
+    fun receiveInput(input: PlayerInput) {
+        val frame = inputBuffer.getOrPut(input.timestamp) { LockstepFrame(input.timestamp) }
+        // Note: this is not safe for concurrent access
+        players[input.playerId].timestamp++
+        frame.inputs.add(input)
+
+        if (frame.inputs.size == players.size) {
+            processFrame(frame)
+        }
+    }
+
+    private fun processFrame(frame: LockstepFrame) {
+        // Apply all player inputs for this tick
+        for (input in frame.inputs) {
+            applyInput(input)
+        }
+
+        // Move to the next tick
+        currentTick++
+    }
+
+    private fun applyInput(input: PlayerInput) {
+        // Apply game logic here
+        players[input.playerId].moveTo(input.action)
+    }
+}
+
+
+
 class GameScreen : KtxScreen {
     private val image = Texture("circle.png".toInternalFile(), true).apply { setFilter(Linear, Linear) }
     private val batch = SpriteBatch()
     private lateinit var p1 : MyCharacter
     private lateinit var p2 : MyCharacter
     private lateinit var viewport: FitViewport
+    private lateinit var lockstepManager: LockstepManager
 
     // This is done as a means to simulate the sending/receiving messages
     private val queue: ConcurrentLinkedQueue<Vector2> = ConcurrentLinkedQueue()
@@ -97,12 +136,12 @@ class GameScreen : KtxScreen {
         p1 = MyCharacter(Vector2(50f, 50f), Sprite(image))
         p2 = MyCharacter(Vector2(350f, 50f), Sprite(image))
         p2.sprite.color = com.badlogic.gdx.graphics.Color.BLUE
+        lockstepManager = LockstepManager(listOf(p1, p2))
         // make a coroutine to get the simulated network messages and use it to update player 2
         customScope.launch {
             while (true) { // while true is not safe: this does not terminate
                 queue.poll()?.let {
-                    // The copy here is IMPORTANT
-                    p2.moveTo(it.cpy().add(300f, 0f))
+                    lockstepManager.receiveInput(PlayerInput(1, it.cpy().add(300f, 0f), p2.timestamp))
                 }
             }
         }
@@ -138,7 +177,7 @@ class GameScreen : KtxScreen {
         if (Gdx.input.isTouched) {
             val target = Vector2(Gdx.input.x.toFloat(), Gdx.input.y.toFloat())
             viewport.unproject(target)
-            p1.moveTo(target)
+            lockstepManager.receiveInput(PlayerInput(0, target, p1.timestamp))
             // "enqueue" the target position for the second player; do it in a delayed coroutine to simulate network latency
             // The scope of the coroutine should not be the same as the game loop
             customScope.launch {
