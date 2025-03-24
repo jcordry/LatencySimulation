@@ -21,6 +21,7 @@ import ktx.assets.toInternalFile
 import ktx.async.KtxAsync
 import ktx.graphics.use
 import java.util.concurrent.ConcurrentLinkedQueue
+import java.util.concurrent.LinkedBlockingQueue
 import kotlin.random.Random
 
 
@@ -48,6 +49,7 @@ class MyCharacter(private var position: Vector2, val sprite: Sprite) {
     // I am cheating a bit, because I know in this case that the two
     // players are going to be updated in the same frame. In real life,
     // you would need to keep track of the time of the last input received for each player
+    // and update based on the server tick.
     var timestamp = 0
 
     init {
@@ -81,11 +83,16 @@ class MyCharacter(private var position: Vector2, val sprite: Sprite) {
     }
 }
 
+// Simple data class to represent the input received from the player
+// The input is just a direction vector
 data class PlayerInput(val playerId: Int, val action: Vector2, val timestamp: Int)
 
+// This class is used to manage the lockstep protocol
+// When a frame is complete, we process the frame and move on to the next tick
 data class LockstepFrame(val tick: Int, val inputs: MutableList<PlayerInput> = mutableListOf())
 
 class LockstepManager(private val players: List<MyCharacter>) {
+    // This is a map of inputs received for each tick
     private val inputBuffer = mutableMapOf<Int, LockstepFrame>()
     private var currentTick = 0
 
@@ -95,6 +102,7 @@ class LockstepManager(private val players: List<MyCharacter>) {
         players[input.playerId].timestamp++
         frame.inputs.add(input)
 
+        // If we have all inputs for this tick, process the frame
         if (frame.inputs.size == players.size) {
             processFrame(frame)
         }
@@ -107,11 +115,13 @@ class LockstepManager(private val players: List<MyCharacter>) {
         }
 
         // Move to the next tick
+        // Not doing much with the tick at the moment. Ideally it should match the server's tick.
         currentTick++
     }
 
     private fun applyInput(input: PlayerInput) {
         // Apply game logic here
+        // In this case, just move to the location
         players[input.playerId].moveTo(input.action)
     }
 }
@@ -127,7 +137,8 @@ class GameScreen : KtxScreen {
     private lateinit var lockstepManager: LockstepManager
 
     // This is done as a means to simulate the sending/receiving messages
-    private val queue: ConcurrentLinkedQueue<Vector2> = ConcurrentLinkedQueue()
+    // Blocking queue is used
+    private val queue: LinkedBlockingQueue<Vector2> = LinkedBlockingQueue()
 
     // Define a coroutine scope to let me declare coroutine that are going to run
     // without blocking the normal game loop
@@ -139,13 +150,17 @@ class GameScreen : KtxScreen {
         camera.setToOrtho(true, 1200f, 540f)
         viewport = FitViewport(1200f, 540f, camera)
         p1 = MyCharacter(Vector2(50f, 50f), Sprite(image))
+        // Player 2 is going to be updated by the simulated network
         p2 = MyCharacter(Vector2(350f, 50f), Sprite(image))
         p2.sprite.color = com.badlogic.gdx.graphics.Color.BLUE
         lockstepManager = LockstepManager(listOf(p1, p2))
         // make a coroutine to get the simulated network messages and use it to update player 2
         customScope.launch {
             while (true) { // while true is not safe: this does not terminate
-                queue.poll()?.let {
+                // Note: we are getting the data from a blocking queue here.
+                queue.take().let {
+                    // not verifying the validity of the input, this could be the server's job
+                    // here, we just simulate receiving the input from the server
                     lockstepManager.receiveInput(PlayerInput(1, it.cpy().add(300f, 0f), p2.timestamp))
                 }
             }
@@ -182,6 +197,9 @@ class GameScreen : KtxScreen {
         if (Gdx.input.isTouched) {
             val target = Vector2(Gdx.input.x.toFloat(), Gdx.input.y.toFloat())
             viewport.unproject(target)
+            // we are getting the input from the player here
+            // this is much earlier than the "remote" player's input (p2)
+            // They both are going to start moving at the same time, though
             lockstepManager.receiveInput(PlayerInput(0, target, p1.timestamp))
             // "enqueue" the target position for the second player; do it in a delayed coroutine to simulate network latency
             // The scope of the coroutine should not be the same as the game loop
