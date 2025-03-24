@@ -24,9 +24,7 @@ import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.LinkedBlockingQueue
 import kotlin.random.Random
 
-
 /* TODO:
-    - implement and simulate the lockstep protocol
     - implement and simulate the dead reckoning algorithm (and at least the lerping aspect)
  */
 
@@ -47,9 +45,9 @@ class MyCharacter(private var position: Vector2, val sprite: Sprite) {
 
     // This is used to keep track of the last input received
     // I am cheating a bit, because I know in this case that the two
-    // players are going to be updated in the same frame. In real life,
-    // you would need to keep track of the time of the last input received for each player
-    // and update based on the server tick.
+    // players are going to be updated in the same frame.
+    // In real life, you would need to keep track of the time of the last
+    // input received for each player and update based on the server tick.
     var timestamp = 0
 
     init {
@@ -97,6 +95,7 @@ class LockstepManager(private val players: List<MyCharacter>) {
     private var currentTick = 0
 
     fun receiveInput(input: PlayerInput) {
+        // create the frame if it does not exist yet.
         val frame = inputBuffer.getOrPut(input.timestamp) { LockstepFrame(input.timestamp) }
         // Note: this is not safe for concurrent access
         players[input.playerId].timestamp++
@@ -115,32 +114,36 @@ class LockstepManager(private val players: List<MyCharacter>) {
         }
 
         // Move to the next tick
-        // Not doing much with the tick at the moment. Ideally it should match the server's tick.
+        // Not doing much with the tick at the moment.
+        // Ideally it should match the server's tick.
         currentTick++
     }
 
     private fun applyInput(input: PlayerInput) {
         // Apply game logic here
-        // In this case, just move to the location
+        // In this case, just move to the location.
+        // We could deal with collision.
+        // This is deterministic.
         players[input.playerId].moveTo(input.action)
     }
 }
 
-
-
 class GameScreen : KtxScreen {
     private val image = Texture("circle.png".toInternalFile(), true).apply { setFilter(Linear, Linear) }
     private val batch = SpriteBatch()
-    private lateinit var p1 : MyCharacter
-    private lateinit var p2 : MyCharacter
     private lateinit var viewport: FitViewport
+
+    // Player 1
+    private lateinit var p1 : MyCharacter
+    // Player 2: we simulate network latency over this one.
+    private lateinit var p2 : MyCharacter
     private lateinit var lockstepManager: LockstepManager
 
     // This is done as a means to simulate the sending/receiving messages
     // Blocking queue is used
     private val queue: LinkedBlockingQueue<Vector2> = LinkedBlockingQueue()
 
-    // Define a coroutine scope to let me declare coroutine that are going to run
+    // Define a coroutine scope to let us declare coroutines that are going to run
     // without blocking the normal game loop
     private val customScope = CoroutineScope(Dispatchers.IO + Job())
 
@@ -150,14 +153,15 @@ class GameScreen : KtxScreen {
         camera.setToOrtho(true, 1200f, 540f)
         viewport = FitViewport(1200f, 540f, camera)
         p1 = MyCharacter(Vector2(50f, 50f), Sprite(image))
-        // Player 2 is going to be updated by the simulated network
         p2 = MyCharacter(Vector2(350f, 50f), Sprite(image))
         p2.sprite.color = com.badlogic.gdx.graphics.Color.BLUE
         lockstepManager = LockstepManager(listOf(p1, p2))
+
         // make a coroutine to get the simulated network messages and use it to update player 2
         customScope.launch {
             while (true) { // while true is not safe: this does not terminate
                 // Note: we are getting the data from a blocking queue here.
+                // We block until we receive a message.
                 queue.take().let {
                     // not verifying the validity of the input, this could be the server's job
                     // here, we just simulate receiving the input from the server
@@ -195,14 +199,18 @@ class GameScreen : KtxScreen {
 
     private fun input() {
         if (Gdx.input.isTouched) {
+            // Get the input
             val target = Vector2(Gdx.input.x.toFloat(), Gdx.input.y.toFloat())
+            // Make sure the coordinates match the viewport ones.
             viewport.unproject(target)
-            // we are getting the input from the player here
+
+            // we are telling the lockstepManager about the input from the player here
             // this is much earlier than the "remote" player's input (p2)
             // They both are going to start moving at the same time, though
             lockstepManager.receiveInput(PlayerInput(0, target, p1.timestamp))
+
             // "enqueue" the target position for the second player; do it in a delayed coroutine to simulate network latency
-            // The scope of the coroutine should not be the same as the game loop
+            // The scope of the coroutine should not block the game loop
             customScope.launch {
                 delay(30 + Random.nextLong(30)) // induced latency 30 to 60 ms
                 queue.add(target)
