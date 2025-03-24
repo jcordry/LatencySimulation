@@ -43,6 +43,11 @@ class MyCharacter(private var position: Vector2, val sprite: Sprite) {
     private var targetPosition: Vector2? = null
     private var speed = 400f // Units per second, you can adjust it as needed
     private var velocity: Vector2 = Vector2(0f, 0f)
+
+    // This is used to keep track of the last input received
+    // I am cheating a bit, because I know in this case that the two
+    // players are going to be updated in the same frame. In real life,
+    // you would need to keep track of the time of the last input received for each player
     var timestamp = 0
 
     init {
