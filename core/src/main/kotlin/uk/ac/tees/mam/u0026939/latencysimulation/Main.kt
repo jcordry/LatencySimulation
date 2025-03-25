@@ -78,11 +78,11 @@ class MyCharacter(private var position: Vector2, val sprite: Sprite) {
 class GameScreen : KtxScreen {
     private val image = Texture("circle.png".toInternalFile(), true).apply { setFilter(Linear, Linear) }
     private val batch = SpriteBatch()
+    private lateinit var viewport: FitViewport
     // Player 1
     private lateinit var p1 : MyCharacter
     // Player 2: this one we are simulating network latency over
     private lateinit var p2 : MyCharacter
-    private lateinit var viewport: FitViewport
 
     // This is done as a means to simulate the sending/receiving messages
     private val queue: LinkedBlockingQueue<Vector2> = LinkedBlockingQueue()
