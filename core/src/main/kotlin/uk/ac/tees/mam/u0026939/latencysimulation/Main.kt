@@ -212,7 +212,7 @@ class GameScreen : KtxScreen {
             // "enqueue" the target position for the second player; do it in a delayed coroutine to simulate network latency
             // The scope of the coroutine should not block the game loop
             customScope.launch {
-                delay(30 + Random.nextLong(30)) // induced latency 30 to 60 ms
+                delay(100 + Random.nextLong(30)) // induced latency 30 to 60 ms
                 queue.add(target)
             }
         }
