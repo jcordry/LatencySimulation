@@ -27,6 +27,9 @@ import kotlin.random.Random
 
 /* TODO:
     - implement and simulate the dead reckoning algorithm (and at least the lerping aspect)
+      - We want to simulate the movement of remote players.
+      - Once the remote player moves, we are going to use the timestamp to simulate the rest of the movement
+      - If another movement is received, we are going to smooth the movement to the new position.
  */
 
 class Main : KtxGame<KtxScreen>() {
@@ -39,9 +42,9 @@ class Main : KtxGame<KtxScreen>() {
     }
 }
 
-class MyCharacter(private var position: Vector2, val sprite: Sprite) {
+class MyCharacter(var position: Vector2, val sprite: Sprite) {
     private var targetPosition: Vector2? = null
-    private var speed = 400f // Units per second, you can adjust it as needed
+    var speed = 400f // Units per second, you can adjust it as needed
     private var velocity: Vector2 = Vector2(0f, 0f)
 
     init {
@@ -72,6 +75,23 @@ class MyCharacter(private var position: Vector2, val sprite: Sprite) {
 
     fun draw(batch: SpriteBatch) {
         sprite.draw(batch)
+    }
+}
+
+class DR(val characters: List<MyCharacter>) {
+    private val threshold: Float = 0.1f
+
+    fun updateNeeded(character: MyCharacter, position: Vector2, actualPosition: Vector2): Boolean {
+        val distance = position.dst(actualPosition)
+        return distance > threshold
+    }
+
+    // Wrong
+    fun simulatedPosition(character: MyCharacter, target: Vector2, deltaTime: Float): Vector2 {
+        val distance = target.dst(character.position)
+        val time = distance / character.speed
+        val timeStep = deltaTime / time
+        return target.cpy().lerp(character.position, timeStep)
     }
 }
 
