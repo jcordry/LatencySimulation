@@ -7,7 +7,6 @@ import com.badlogic.gdx.graphics.Texture.TextureFilter.Linear
 import com.badlogic.gdx.graphics.g2d.Sprite
 import com.badlogic.gdx.graphics.g2d.SpriteBatch
 import com.badlogic.gdx.math.Vector2
-import com.badlogic.gdx.utils.viewport.FitViewport
 import com.badlogic.gdx.utils.viewport.ScreenViewport
 import com.badlogic.gdx.utils.viewport.Viewport
 import kotlinx.coroutines.CoroutineScope
@@ -22,7 +21,6 @@ import ktx.assets.disposeSafely
 import ktx.assets.toInternalFile
 import ktx.async.KtxAsync
 import ktx.graphics.use
-import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.LinkedBlockingQueue
 import kotlin.math.max
 import kotlin.random.Random
@@ -42,8 +40,9 @@ class Main : KtxGame<KtxScreen>() {
     }
 }
 
-class MyCharacter(var position: Vector2, val sprite: Sprite) {
-    private val threshold = 5f
+class MyCharacter(val id: Int, var position: Vector2, val sprite: Sprite) {
+    var updateNeeded = false
+    private val threshold = 0.01f
     private var targetPosition: Vector2? = null
     private var speed = 400f // Units per second, you can adjust it as needed
     var velocity: Vector2 = Vector2(0f, 0f)
@@ -60,7 +59,7 @@ class MyCharacter(var position: Vector2, val sprite: Sprite) {
         velocity.set(target.cpy().sub(position).nor().scl(speed))
     }
 
-    fun update(deltaTime: Float) : Boolean {
+    fun update(deltaTime: Float) {
         targetPosition?.let {
             val distanceToTarget = it.cpy().sub(position).len()
             val maxMoveDistance = speed * deltaTime
@@ -76,20 +75,18 @@ class MyCharacter(var position: Vector2, val sprite: Sprite) {
 
             // Updating the predicted position
             predictedPosition.add(velocity.cpy().scl(deltaTime))
-            if (targetPosition != null &&  predictedPosition.dst(targetPosition) < maxMoveDistance) {
-                predictedPosition.set(it)
-            } else if (targetPosition == null) {
-                predictedPosition.set(position)
-            }
+            println("$id Position: $position Predicted position: $predictedPosition Match ${position.dst(predictedPosition)}")
 
             if (predictedPosition.dst(position) > threshold) {
                 predictedPosition.set(position)
                 lastUpdateTime = System.currentTimeMillis()
-                return true
+                println("$id Predicted position reset")
+                updateNeeded = true
+            } else {
+                updateNeeded = false
             }
         }
         sprite.setPosition(position.x, position.y)
-        return false
     }
 
     fun correctPosition(newPosition: Vector2, newVelocity: Vector2, target: Vector2, timestamp: Long) {
@@ -101,9 +98,10 @@ class MyCharacter(var position: Vector2, val sprite: Sprite) {
 
         // Apply correction (simple interpolation)
         position.lerp(predictedPosition, 0.1f) // Smooth correction factor
-        velocity.set(newVelocity)
-        lastUpdateTime = currentTime
         moveTo(target)
+        // velocity should be based on the latency
+        velocity.set(target.cpy().sub(position).nor().scl(speed*latency))
+        lastUpdateTime = currentTime
     }
 
     fun draw(batch: SpriteBatch) {
@@ -116,7 +114,6 @@ data class Message(val timestamp: Long, val position: Vector2, val velocity: Vec
 class GameScreen : KtxScreen {
     private val image = Texture("circle.png".toInternalFile(), true).apply { setFilter(Linear, Linear) }
     private val batch = SpriteBatch()
-    private var updatedNeeded = false
     private lateinit var viewport: Viewport
     // Player 1
     private lateinit var p1 : MyCharacter
@@ -136,17 +133,16 @@ class GameScreen : KtxScreen {
         camera.setToOrtho(true, 2400f, 1080f)
 //        viewport = FitViewport(1200f, 540f, camera)
         viewport = ScreenViewport(camera)
-        p1 = MyCharacter(Vector2(50f, 50f), Sprite(image))
-        p2 = MyCharacter(Vector2(350f, 50f), Sprite(image))
+        p1 = MyCharacter(1, Vector2(50f, 50f), Sprite(image))
+        p2 = MyCharacter(2, Vector2(350f, 50f), Sprite(image))
         p2.sprite.color = com.badlogic.gdx.graphics.Color.BLUE
         // make a coroutine to get the simulated network messages and use it to update player 2
         customScope.launch {
             while (true) { // while true is not safe: this does not terminate
                 // This is a LinkedBlockingQueue. `take` is blocking.
                 queue.take().let {
-                    // The `copy` here is IMPORTANT
-                    p2.moveTo(it.position.cpy().add(300f, 0f))
-                    p2.correctPosition(it.position, it.velocity, it.target, it.timestamp)
+                    println("Correcting position")
+                    p2.correctPosition(it.position.cpy().add(300f, 0f), it.velocity, it.target.cpy().add(300f, 0f), it.timestamp)
                 }
             }
         }
@@ -174,7 +170,7 @@ class GameScreen : KtxScreen {
     }
 
     private fun update(delta: Float) {
-        updatedNeeded = p1.update(delta)
+        p1.update(delta)
         p2.update(delta)
     }
 
@@ -185,7 +181,7 @@ class GameScreen : KtxScreen {
             p1.moveTo(target)
             // "enqueue" the target position for the second player; do it in a delayed coroutine to simulate network latency
             // The scope of the coroutine should not be the same as the game loop
-            if (updatedNeeded) {
+            if (p1.updateNeeded) {
                 val velocity = p1.velocity.cpy()
                 val position = p1.position.cpy()
                 customScope.launch {
