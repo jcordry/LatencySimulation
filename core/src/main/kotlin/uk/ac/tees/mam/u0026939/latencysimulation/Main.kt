@@ -8,6 +8,8 @@ import com.badlogic.gdx.graphics.g2d.Sprite
 import com.badlogic.gdx.graphics.g2d.SpriteBatch
 import com.badlogic.gdx.math.Vector2
 import com.badlogic.gdx.utils.viewport.FitViewport
+import com.badlogic.gdx.utils.viewport.ScreenViewport
+import com.badlogic.gdx.utils.viewport.Viewport
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -60,20 +62,36 @@ class MyCharacter(private var position: Vector2, val sprite: Sprite) {
 
     fun update(deltaTime: Float) {
         targetPosition?.let {
-            val direction = it.cpy().sub(position).nor()
-            val accelerationForce = direction.scl(acceleration * deltaTime)
-            velocity.add(accelerationForce)
-            velocity.scl(1f - drag * deltaTime)
-            position.add(velocity.cpy().scl(deltaTime))
+            val distanceToTarget = it.cpy().sub(position).len()
+            val maxMoveDistance = speed * deltaTime
 
-            if (position.dst2(it) < 1f) {
-                position = it
-                targetPosition = null
+            if (distanceToTarget <= maxMoveDistance) {
+                position.set(it)
                 velocity.set(0f, 0f)
+                targetPosition = null
+            } else {
+                position.add(velocity.cpy().scl(deltaTime))
             }
         }
         sprite.setPosition(position.x, position.y)
     }
+
+//    fun update(deltaTime: Float) {
+//        targetPosition?.let {
+//            val direction = it.cpy().sub(position).nor()
+//            val accelerationForce = direction.scl(acceleration * deltaTime)
+//            velocity.add(accelerationForce)
+//            velocity.scl(1f - drag * deltaTime)
+//            position.add(velocity.cpy().scl(deltaTime))
+//
+//            if (position.dst2(it) < 1f) {
+//                position = it
+//                targetPosition = null
+//                velocity.set(0f, 0f)
+//            }
+//        }
+//        sprite.setPosition(position.x, position.y)
+//    }
 
     fun draw(batch: SpriteBatch) {
         sprite.draw(batch)
@@ -83,7 +101,7 @@ class MyCharacter(private var position: Vector2, val sprite: Sprite) {
 class GameScreen : KtxScreen {
     private val image = Texture("circle.png".toInternalFile(), true).apply { setFilter(Linear, Linear) }
     private val batch = SpriteBatch()
-    private lateinit var viewport: FitViewport
+    private lateinit var viewport: Viewport
     // Player 1
     private lateinit var p1 : MyCharacter
     // Player 2: this one we are simulating network latency over
@@ -100,7 +118,8 @@ class GameScreen : KtxScreen {
         super.show()
         val camera = OrthographicCamera()
         camera.setToOrtho(true, 1200f, 540f)
-        viewport = FitViewport(1200f, 540f, camera)
+//        viewport = FitViewport(1200f, 540f, camera)
+        viewport = ScreenViewport(camera)
         p1 = MyCharacter(Vector2(50f, 50f), Sprite(image))
         p2 = MyCharacter(Vector2(350f, 50f), Sprite(image))
         p2.sprite.color = com.badlogic.gdx.graphics.Color.BLUE
