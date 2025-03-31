@@ -45,8 +45,6 @@ class MyCharacter(private var position: Vector2, val sprite: Sprite) {
     private var targetPosition: Vector2? = null
     private var speed = 400f // Units per second, you can adjust it as needed
     private var velocity: Vector2 = Vector2(0f, 0f)
-    private var acceleration = 400f // Units per second squared
-    private val drag = 0.9f // Drag coefficient
 
     init {
         sprite.setSize(32f, 32f)
@@ -55,9 +53,8 @@ class MyCharacter(private var position: Vector2, val sprite: Sprite) {
 
     fun moveTo(target: Vector2) {
         targetPosition = target
-//        velocity = target.cpy().sub(position).nor().scl(speed)
         val direction = target.cpy().sub(position).nor()
-        velocity = direction.scl(acceleration) // Initial acceleration impulse
+        velocity.set(direction.cpy().scl(speed))
     }
 
     fun update(deltaTime: Float) {
@@ -75,23 +72,6 @@ class MyCharacter(private var position: Vector2, val sprite: Sprite) {
         }
         sprite.setPosition(position.x, position.y)
     }
-
-//    fun update(deltaTime: Float) {
-//        targetPosition?.let {
-//            val direction = it.cpy().sub(position).nor()
-//            val accelerationForce = direction.scl(acceleration * deltaTime)
-//            velocity.add(accelerationForce)
-//            velocity.scl(1f - drag * deltaTime)
-//            position.add(velocity.cpy().scl(deltaTime))
-//
-//            if (position.dst2(it) < 1f) {
-//                position = it
-//                targetPosition = null
-//                velocity.set(0f, 0f)
-//            }
-//        }
-//        sprite.setPosition(position.x, position.y)
-//    }
 
     fun draw(batch: SpriteBatch) {
         sprite.draw(batch)
