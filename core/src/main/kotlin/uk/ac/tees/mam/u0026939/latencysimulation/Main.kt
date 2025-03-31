@@ -53,8 +53,7 @@ class MyCharacter(private var position: Vector2, val sprite: Sprite) {
 
     fun moveTo(target: Vector2) {
         targetPosition = target
-        val direction = target.cpy().sub(position).nor()
-        velocity.set(direction.cpy().scl(speed))
+        velocity.set(target.cpy().sub(position).nor().scl(speed))
     }
 
     fun update(deltaTime: Float) {
@@ -97,7 +96,7 @@ class GameScreen : KtxScreen {
     override fun show() {
         super.show()
         val camera = OrthographicCamera()
-        camera.setToOrtho(true, 1200f, 540f)
+        camera.setToOrtho(true, 2400f, 1080f)
 //        viewport = FitViewport(1200f, 540f, camera)
         viewport = ScreenViewport(camera)
         p1 = MyCharacter(Vector2(50f, 50f), Sprite(image))
