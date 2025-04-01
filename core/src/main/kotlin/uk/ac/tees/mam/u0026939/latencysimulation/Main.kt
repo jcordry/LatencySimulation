@@ -8,7 +8,6 @@ import com.badlogic.gdx.graphics.g2d.Sprite
 import com.badlogic.gdx.graphics.g2d.SpriteBatch
 import com.badlogic.gdx.math.Interpolation
 import com.badlogic.gdx.math.Vector2
-import com.badlogic.gdx.utils.viewport.FitViewport
 import com.badlogic.gdx.utils.viewport.ScreenViewport
 import com.badlogic.gdx.utils.viewport.Viewport
 import kotlinx.coroutines.CoroutineScope
@@ -25,7 +24,6 @@ import ktx.async.KtxAsync
 import ktx.graphics.use
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.LinkedBlockingQueue
-import kotlin.math.max
 import kotlin.random.Random
 
 
@@ -103,7 +101,7 @@ class DeadReckoning(private val player2: MyCharacter) {
             player2.position.set(newPosition)
         } else {
             // Small error -> Smooth correction
-            player2.position.interpolate(newPosition, 0.1f, Interpolation.linear)
+            player2.position.interpolate(newPosition, 0.3f, Interpolation.pow2)
         }
 
         // Update movement towards target
