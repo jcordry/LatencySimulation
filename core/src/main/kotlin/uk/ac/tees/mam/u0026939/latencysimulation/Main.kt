@@ -6,6 +6,7 @@ import com.badlogic.gdx.graphics.Texture
 import com.badlogic.gdx.graphics.Texture.TextureFilter.Linear
 import com.badlogic.gdx.graphics.g2d.Sprite
 import com.badlogic.gdx.graphics.g2d.SpriteBatch
+import com.badlogic.gdx.math.Interpolation
 import com.badlogic.gdx.math.Vector2
 import com.badlogic.gdx.utils.viewport.FitViewport
 import com.badlogic.gdx.utils.viewport.ScreenViewport
@@ -43,12 +44,10 @@ class Main : KtxGame<KtxScreen>() {
 }
 
 class MyCharacter(var position: Vector2, val sprite: Sprite) {
-    private val threshold = 5f
     private var targetPosition: Vector2? = null
     private var speed = 400f // Units per second, you can adjust it as needed
     var velocity: Vector2 = Vector2(0f, 0f)
-    private var lastUpdateTime = 0L
-    private var predictedPosition = position.cpy()
+    var lastUpdateTime = 0f
 
     init {
         sprite.setSize(32f, 32f)
@@ -60,58 +59,61 @@ class MyCharacter(var position: Vector2, val sprite: Sprite) {
         velocity.set(target.cpy().sub(position).nor().scl(speed))
     }
 
-    fun update(deltaTime: Float) : Boolean {
-        targetPosition?.let {
-            val distanceToTarget = it.cpy().sub(position).len()
-            val maxMoveDistance = speed * deltaTime
+    fun update(deltaTime: Float) {
+        targetPosition?.let { target ->
+            val direction = target.cpy().sub(position).nor()
+            val distance = position.dst(target)
+            val step = speed * deltaTime
 
-            // Updating the position
-            if (distanceToTarget <= maxMoveDistance) {
-                position.set(it)
-                velocity.set(0f, 0f)
-                targetPosition = null
+            if (distance > step) {
+                position.add(direction.scl(step)) // Move towards target
             } else {
-                position.add(velocity.cpy().scl(deltaTime))
-            }
-
-            // Updating the predicted position
-            predictedPosition.add(velocity.cpy().scl(deltaTime))
-            if (targetPosition != null &&  predictedPosition.dst(targetPosition) < maxMoveDistance) {
-                predictedPosition.set(it)
-            } else if (targetPosition == null) {
-                predictedPosition.set(position)
-            }
-
-            if (predictedPosition.dst(position) > threshold) {
-                predictedPosition.set(position)
-                lastUpdateTime = System.currentTimeMillis()
-                return true
+                position.set(target) // Snap to target when close
+                velocity.setZero()
+                targetPosition = null
             }
         }
-        sprite.setPosition(position.x, position.y)
-        return false
-    }
-
-    fun correctPosition(newPosition: Vector2, newVelocity: Vector2, target: Vector2, timestamp: Long) {
-        val currentTime = System.currentTimeMillis()
-        val latency = max(0L, currentTime - timestamp)
-
-        // Predict where the entity should be based on the latency
-        predictedPosition = newPosition.cpy().add(newVelocity.x * latency, newVelocity.y * latency)
-
-        // Apply correction (simple interpolation)
-        position.lerp(predictedPosition, 0.1f) // Smooth correction factor
-        velocity.set(newVelocity)
-        lastUpdateTime = currentTime
-        moveTo(target)
     }
 
     fun draw(batch: SpriteBatch) {
+        sprite.setPosition(position.x, position.y)
         sprite.draw(batch)
     }
 }
 
-data class Message(val timestamp: Long, val position: Vector2, val velocity: Vector2, val target: Vector2)
+class DeadReckoning(private val player2: MyCharacter) {
+    private val updateThreshold = 10f // Max error before correction
+    private var lastKnownPosition = Vector2()
+    private var lastUpdateTimestamp = 0f
+
+    fun update(deltaTime: Float) {
+        // Predict Player 2's movement
+        player2.update(deltaTime)
+    }
+
+    fun onNetworkUpdate(newPosition: Vector2, newTarget: Vector2, timestamp: Float) {
+        val latency = timestamp - lastUpdateTimestamp
+        lastUpdateTimestamp = timestamp
+
+        val predictedPosition = lastKnownPosition.cpy().add(player2.velocity.cpy().scl(latency))
+        val error = newPosition.dst(predictedPosition)
+
+        if (error > updateThreshold) {
+            // Large error -> Snap to position
+            player2.position.set(newPosition)
+        } else {
+            // Small error -> Smooth correction
+            player2.position.interpolate(newPosition, 0.1f, Interpolation.linear)
+        }
+
+        // Update movement towards target
+        player2.moveTo(newTarget)
+        lastKnownPosition.set(newPosition)
+        player2.lastUpdateTime = timestamp
+    }
+}
+
+data class Message(val timestamp: Long, val position: Vector2, val target: Vector2)
 
 class GameScreen : KtxScreen {
     private val image = Texture("circle.png".toInternalFile(), true).apply { setFilter(Linear, Linear) }
@@ -122,6 +124,7 @@ class GameScreen : KtxScreen {
     private lateinit var p1 : MyCharacter
     // Player 2: this one we are simulating network latency over
     private lateinit var p2 : MyCharacter
+    private lateinit var dr : DeadReckoning
 
     // This is done as a means to simulate the sending/receiving messages
     private val queue: LinkedBlockingQueue<Message> = LinkedBlockingQueue()
@@ -139,14 +142,13 @@ class GameScreen : KtxScreen {
         p1 = MyCharacter(Vector2(50f, 50f), Sprite(image))
         p2 = MyCharacter(Vector2(350f, 50f), Sprite(image))
         p2.sprite.color = com.badlogic.gdx.graphics.Color.BLUE
+        dr = DeadReckoning(p2)
         // make a coroutine to get the simulated network messages and use it to update player 2
         customScope.launch {
             while (true) { // while true is not safe: this does not terminate
                 // This is a LinkedBlockingQueue. `take` is blocking.
                 queue.take().let {
-                    // The `copy` here is IMPORTANT
-                    p2.moveTo(it.position.cpy().add(300f, 0f))
-                    p2.correctPosition(it.position, it.velocity, it.target, it.timestamp)
+                    dr.onNetworkUpdate(it.position.cpy().add(300f, 0f), it.target.cpy().add(300f, 0f), it.timestamp.toFloat())
                 }
             }
         }
@@ -174,8 +176,8 @@ class GameScreen : KtxScreen {
     }
 
     private fun update(delta: Float) {
-        updatedNeeded = p1.update(delta)
-        p2.update(delta)
+        p1.update(delta)
+        dr.update(delta)
     }
 
     private fun input() {
@@ -185,13 +187,10 @@ class GameScreen : KtxScreen {
             p1.moveTo(target)
             // "enqueue" the target position for the second player; do it in a delayed coroutine to simulate network latency
             // The scope of the coroutine should not be the same as the game loop
-            if (updatedNeeded) {
-                val velocity = p1.velocity.cpy()
-                val position = p1.position.cpy()
-                customScope.launch {
-                    delay(100 + Random.nextLong(30)) // induced latency 30 to 60 ms
-                    queue.add(Message(System.currentTimeMillis(), position, velocity, target.cpy()))
-                }
+            customScope.launch {
+                val timestamp = System.currentTimeMillis()
+                delay(100 + Random.nextLong(30)) // induced latency 30 to 60 ms
+                queue.add(Message(timestamp, p1.position.cpy(), target.cpy()))
             }
         }
     }
