@@ -80,7 +80,7 @@ class MyCharacter(var position: Vector2, val sprite: Sprite) {
 }
 
 class DeadReckoning(private val player2: MyCharacter) {
-    private val updateThreshold = 10f // Max error before correction
+    private val updateThreshold = 2f // Max error before correction
     private var lastKnownPosition = Vector2()
     private var lastUpdateTimestamp = 0f
 
@@ -101,7 +101,7 @@ class DeadReckoning(private val player2: MyCharacter) {
             player2.position.set(newPosition)
         } else {
             // Small error -> Smooth correction
-            player2.position.interpolate(newPosition, 0.3f, Interpolation.pow2)
+            player2.position.interpolate(newPosition, 0.05f, Interpolation.pow2)
         }
 
         // Update movement towards target
