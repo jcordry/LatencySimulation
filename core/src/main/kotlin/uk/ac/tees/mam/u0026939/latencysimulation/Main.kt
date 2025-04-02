@@ -8,6 +8,8 @@ import com.badlogic.gdx.graphics.g2d.Sprite
 import com.badlogic.gdx.graphics.g2d.SpriteBatch
 import com.badlogic.gdx.math.Vector2
 import com.badlogic.gdx.utils.viewport.FitViewport
+import com.badlogic.gdx.utils.viewport.ScreenViewport
+import com.badlogic.gdx.utils.viewport.Viewport
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -131,7 +133,7 @@ class LockstepManager(private val players: List<MyCharacter>) {
 class GameScreen : KtxScreen {
     private val image = Texture("circle.png".toInternalFile(), true).apply { setFilter(Linear, Linear) }
     private val batch = SpriteBatch()
-    private lateinit var viewport: FitViewport
+    private lateinit var viewport: Viewport
 
     // Player 1
     private lateinit var p1 : MyCharacter
@@ -151,7 +153,8 @@ class GameScreen : KtxScreen {
         super.show()
         val camera = OrthographicCamera()
         camera.setToOrtho(true, 1200f, 540f)
-        viewport = FitViewport(1200f, 540f, camera)
+//        viewport = FitViewport(1200f, 540f, camera)
+        viewport = ScreenViewport(camera)
         p1 = MyCharacter(Vector2(50f, 50f), Sprite(image))
         p2 = MyCharacter(Vector2(350f, 50f), Sprite(image))
         p2.sprite.color = com.badlogic.gdx.graphics.Color.BLUE
